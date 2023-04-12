@@ -698,3 +698,35 @@ getProcTick(int pid){
   release(&tickslock);
   return nticks;
 } 
+
+
+int 
+getFreeram();
+
+int
+sysinfo(struct sysinfo *info){
+  struct sysinfo t;
+  if(!info){
+    return -1;
+  }
+  acquire(&tickslock);
+  t.uptime = ticks * 0.1;
+  release(&tickslock);
+
+  t.totalram = PHYSTOP-KERNBASE;
+
+  t.freeram = getFreeram();
+
+  int counter = 0;
+  struct proc *p;
+  for(p = proc; p < &proc[NPROC]; p++){
+    if(p->state != UNUSED){
+      counter += 1;
+    }
+  }
+  t.procs = counter;
+  struct proc *cp = myproc();
+  copyout(cp->pagetable, (uint64)info, (char *)&t, sizeof(t));
+
+  return 0; 
+}
