@@ -82,7 +82,7 @@ struct trapframe {
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 enum schedulerType {FCFS, RR};
-
+extern enum schedulerType st;
 // Per-process state
 struct proc {
   struct spinlock lock;
@@ -93,7 +93,11 @@ struct proc {
   int killed;                  // If non-zero, have been killed
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
-  int ticks;
+  int ticks;                   //creation time 
+  int termination_time;
+  int running_time;
+  int ready_time;
+  int sleeping_time;
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
 
@@ -106,8 +110,6 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
-
-  enum schedulerType st;
 };
 
 struct sysinfo{

@@ -6,6 +6,7 @@
 #include "spinlock.h"
 #include "proc.h"
 
+
 uint64
 sys_exit(void)
 {
@@ -105,16 +106,21 @@ sys_sysinfo(void){
   return sysinfo((struct sysinfo *)p);
 }
 
-uint64 sys_changeScheduler(void){
-  int pid;
+uint64
+sys_changeScheduler(void){
+  int type;
   //retrieve process id
-  argint(0, &pid);
-  //retrive process name
-  char scheduler_name[MAXARG];
-  if (argstr(1, scheduler_name, MAXARG) < 0)
-  {
-    return -1;
-  }
+  argint(0, &type);
+  return changeScheduler(type);
+}
 
-  return changeScheduler(pid, scheduler_name);
+uint64 sys_processInfo(void){
+    uint64 info;
+    int pid;
+    argint(1,&pid);
+    argaddr(0, &info);
+    if(info<0)
+        return -1;
+    int result = processInfo(info,pid);
+    return result;
 }

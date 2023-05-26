@@ -6,7 +6,7 @@
 #include "proc.h"
 #include "defs.h"
 #include "stdbool.h"
-
+#include "processInfo.h"
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -14,6 +14,7 @@ struct proc proc[NPROC];
 struct proc *initproc;
 
 int nextpid = 1;
+enum schedulerType st = FCFS;
 struct spinlock pid_lock;
 
 extern void forkret(void);
@@ -127,7 +128,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
-  p->st = RR;
+  p->sleeping_time = 0;
   // Allocate a trapframe page.
   if ((p->trapframe = (struct trapframe *)kalloc()) == 0)
   {
@@ -386,7 +387,7 @@ void exit(int status)
   wakeup(p->parent);
 
   acquire(&p->lock);
-
+  p->termination_time = ticks;
   p->xstate = status;
   p->state = ZOMBIE;
 
@@ -451,15 +452,14 @@ int wait(uint64 addr)
   }
 }
 
-int FCFS_scheduler(struct proc *p ,struct cpu *c)
+int FCFS_scheduler(struct proc *p, struct cpu *c)
 {
-  intr_off();
   int pticks = __INT_MAX__;
   struct proc *next_process;
-  for (p=proc; p < &proc[NPROC]; p++)
+  for (p = proc; p < &proc[NPROC]; p++)
   {
-    
-    if ((p->state == RUNNABLE) && (p->st == FCFS))
+
+    if (p->state == RUNNABLE)
     {
       acquire(&p->lock);
       if (pticks > p->ticks)
@@ -476,43 +476,37 @@ int FCFS_scheduler(struct proc *p ,struct cpu *c)
   }
   p = next_process;
   acquire(&next_process->lock);
-  p->state = RUNNING;
-  c->proc = p;
-  swtch(&c->context, &p->context);
-  c->proc = 0;
+  if (p->state == RUNNABLE)
+  {
+    p->state = RUNNING;
+    c->proc = p;
+    swtch(&c->context, &p->context);
+    c->proc = 0;
+  }else{
+    release(&p->lock);
+    return 1;
+  }
   release(&p->lock);
   return -1;
 }
 
-
-void RR_scheduler(struct proc *p,struct cpu *c)
+void RR_scheduler(struct proc *p, struct cpu *c)
 {
   intr_on();
-  int flag = 0;
+  // int flag = 0;
   for (p = proc; p < &proc[NPROC]; p++)
   {
     acquire(&p->lock);
-    if (p->state == RUNNABLE && p->st == RR) 
+    if (p->state == RUNNABLE)
     {
-      // Switch to chosen process.  It is the process's job
-      // to release its lock and then reacquire it
-      // before jumping back to us.
       p->state = RUNNING;
-      flag = 1;
+      // flag = 1;
       c->proc = p;
       swtch(&c->context, &p->context);
-
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
       c->proc = 0;
     }
     release(&p->lock);
   }
-  if (flag == 0)
-  {
-    asm volatile("wfi");
-  }
-  
 }
 
 // Per-CPU process scheduler.
@@ -529,33 +523,19 @@ void scheduler(void)
   c->proc = 0;
   for (;;)
   {
-    int res = FCFS_scheduler(p, c);
-    if (res == 1)
+    if (st == FCFS)
+    {
+      int res = FCFS_scheduler(p, c);
+      if (res == 1)
+      {
+        RR_scheduler(p, c);
+      }
+    }
+    else
     {
       RR_scheduler(p, c);
     }
   }
-  // // Avoid deadlock by ensuring that devices can interrupt.
-  // intr_on();
-
-  // for (p = proc; p < &proc[NPROC]; p++)
-  // {
-  //   acquire(&p->lock);
-  //   if (p->state == RUNNABLE)
-  //   {
-  //     // Switch to chosen process.  It is the process's job
-  //     // to release its lock and then reacquire it
-  //     // before jumping back to us.
-  //     p->state = RUNNING;
-  //     c->proc = p;
-  //     swtch(&c->context, &p->context);
-
-  //     // Process is done running for now.
-  //     // It should have changed its p->state before coming back.
-  //     c->proc = 0;
-  //   }
-  //   release(&p->lock);
-  // }
 }
 
 // Switch to scheduler.  Must hold only p->lock
@@ -821,44 +801,78 @@ int sysinfo(struct sysinfo *info)
   return 0;
 }
 
-enum schedulerType find_st(char *scheduler_name){
-  if (strncmp(scheduler_name, "rr", 2) == 0 || strncmp(scheduler_name, "RR", 2) == 0)
+int changeScheduler(int type)
+{
+  if (type == 0)
   {
-    return RR;
+    st = FCFS;
+    printf("Switch to fcfs");
   }
-  return FCFS;
-}
-
-void print_scheduler_type(int pid){
-  struct proc *p;
-  for(p=proc; p<&proc[NPROC];p++){
-    acquire(&p->lock);
-    if (p->pid == pid)
-    {
-      printf("processId = %d with schedtype=%s\n", p->pid, (p->st == FCFS)?"FCFS":"RR");
-    }
-    
-    release(&p->lock);
+  else if (type == 1)
+  {
+    printf("Switch to rr");
+    st = RR;
   }
-}
-
-int changeScheduler(int pid, char *scheduler_name){
-  printf("before call change scheduler type function = ");
-  print_scheduler_type(pid);
-  struct proc *p;
-  for(p=proc;p<&proc[NPROC];p++){
-    acquire(&p->lock);
-    if (p->pid == pid)
-    {
-      p->st = find_st(scheduler_name);
-      release(&p->lock);
-      printf("after call change scheduler type function = ");
-      print_scheduler_type(pid);
-      return 1;
-    }
-    release(&p->lock);
-  }
-  printf("Can't find process with this process id\n");
-  print_scheduler_type(pid);
   return 0;
+}
+
+int processInfo(uint64 uinfo, int pid)
+{
+  struct processInfo info;
+  struct proc *p;
+  int flag = 0;
+  for (p = proc; p < &proc[NPROC]; p++)
+  {
+    acquire(&p->lock);
+    if (p->pid == pid)
+    {
+      printf("%d\n", p->running_time);
+      flag = 1;
+      info.cpu_burst_time = ((double)p->running_time) / 10;
+      info.waiting_time = ((double)p->sleeping_time) / 10;
+      if (p->termination_time == 0)
+      {
+        info.turn_around_time = ticks - p->ticks;
+      }
+
+      else if (p->termination_time - p->ticks < 0)
+      {
+        info.turn_around_time = 0;
+      }
+      else
+      {
+        info.turn_around_time = p->termination_time - p->ticks;
+      }
+    }
+    release(&p->lock);
+  }
+
+  if (flag == 0 || (copyout(myproc()->pagetable, uinfo, (char *)&info, sizeof(info)) < 0))
+  {
+    return -1;
+  }
+
+  return 0;
+}
+
+void processInfoUpdate()
+{
+  struct proc *p;
+  for (p = proc; p < &proc[NPROC]; p++)
+  {
+    acquire(&p->lock);
+    if (p->state == RUNNABLE)
+    {
+      p->ready_time++;
+    }
+    else if (p->state == RUNNING)
+    {
+      p->running_time++;
+    }
+    else if (p->state == SLEEPING)
+    {
+      p->sleeping_time++;
+    }
+    release(&p->lock);
+  }
 }

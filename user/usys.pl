@@ -39,3 +39,4 @@ entry("uptime");
 entry("getProcTick");
 entry("sysinfo");
 entry("changeScheduler");
+entry("processInfo");
