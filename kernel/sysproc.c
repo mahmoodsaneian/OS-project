@@ -104,3 +104,17 @@ sys_sysinfo(void){
   argaddr(0, &p);
   return sysinfo((struct sysinfo *)p);
 }
+
+uint64 sys_changeScheduler(void){
+  int pid;
+  //retrieve process id
+  argint(0, &pid);
+  //retrive process name
+  char scheduler_name[MAXARG];
+  if (argstr(1, scheduler_name, MAXARG) < 0)
+  {
+    return -1;
+  }
+
+  return changeScheduler(pid, scheduler_name);
+}

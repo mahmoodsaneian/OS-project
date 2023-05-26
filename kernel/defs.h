@@ -109,6 +109,7 @@ int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
 int             getProcTick(int);
 int             sysinfo(struct sysinfo*);
+int             changeScheduler(int, char *);
 // swtch.S
 void            swtch(struct context*, struct context*);
 
