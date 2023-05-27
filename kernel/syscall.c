@@ -105,6 +105,7 @@ extern uint64 sys_getProcTick(void);
 extern uint64 sys_sysinfo(void);
 extern uint64 sys_changeScheduler(void);
 extern uint64 sys_processInfo(void);
+extern uint64 sys_customWait(void);
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -133,7 +134,8 @@ static uint64 (*syscalls[])(void) = {
 [SYS_getProcTick] sys_getProcTick,
 [SYS_sysinfo] sys_sysinfo,
 [SYS_changeScheduler] sys_changeScheduler,
-[SYS_processInfo] sys_processInfo
+[SYS_processInfo] sys_processInfo,
+[SYS_customWait] sys_customWait
 };
 
 void

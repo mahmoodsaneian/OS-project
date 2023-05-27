@@ -7,6 +7,7 @@
 #include "defs.h"
 #include "stdbool.h"
 #include "processInfo.h"
+
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -128,7 +129,13 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  acquire(&tickslock);
+  p->ticks = ticks;
+  release(&tickslock);
   p->sleeping_time = 0;
+  p->running_time = 0;
+  p->termination_time = 0;
+  p->ready_time = 0;
   // Allocate a trapframe page.
   if ((p->trapframe = (struct trapframe *)kalloc()) == 0)
   {
@@ -320,9 +327,6 @@ int fork(void)
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
-  acquire(&tickslock);
-  np->ticks = ticks;
-  release(&tickslock);
   release(&np->lock);
 
   acquire(&wait_lock);
@@ -452,6 +456,76 @@ int wait(uint64 addr)
   }
 }
 
+int customWait(uint64 addr, uint64 processinfo)
+{
+  struct proc *pp;
+  int havekids, pid;
+  struct proc *p = myproc();
+
+  acquire(&wait_lock);
+
+  for (;;)
+  {
+    // Scan through table looking for exited children.
+    havekids = 0;
+    for (pp = proc; pp < &proc[NPROC]; pp++)
+    {
+      if (pp->parent == p)
+      {
+        // make sure the child isn't still in exit() or swtch().
+        acquire(&pp->lock);
+
+        havekids = 1;
+        if (pp->state == ZOMBIE)
+        {
+          // Found one.
+
+          struct processInfo info;
+
+          info.cpu_burst_time = (long)(pp->running_time);
+          info.turn_around_time = (long)(pp->termination_time - pp->ticks);
+          info.waiting_time = (long)(pp->sleeping_time + pp->ready_time);
+
+          pid = pp->pid;
+
+          if (addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,
+                                   sizeof(pp->xstate)) < 0)
+          {
+            release(&pp->lock);
+            release(&wait_lock);
+            return -1;
+          }
+
+          if (processinfo != 0 && copyout(p->pagetable, processinfo,
+                                        (char *)&info, sizeof(info)) < 0)
+          {
+            release(&pp->lock);
+            release(&wait_lock);
+            return -1;
+          }
+
+          freeproc(pp);
+          release(&pp->lock);
+          release(&wait_lock);
+
+          return pid;
+        }
+        release(&pp->lock);
+      }
+    }
+
+    // No point waiting if we don't have any children.
+    if (!havekids || killed(p))
+    {
+      release(&wait_lock);
+      return -1;
+    }
+
+    // Wait for a child to exit.
+    sleep(p, &wait_lock); // DOC: wait-sleep
+  }
+}
+
 int FCFS_scheduler(struct proc *p, struct cpu *c)
 {
   int pticks = __INT_MAX__;
@@ -459,7 +533,7 @@ int FCFS_scheduler(struct proc *p, struct cpu *c)
   for (p = proc; p < &proc[NPROC]; p++)
   {
 
-    if (p->state == RUNNABLE)
+    if ((p->state == RUNNABLE) && (p->pid != 1 && p->pid != 2))
     {
       acquire(&p->lock);
       if (pticks > p->ticks)
@@ -482,7 +556,9 @@ int FCFS_scheduler(struct proc *p, struct cpu *c)
     c->proc = p;
     swtch(&c->context, &p->context);
     c->proc = 0;
-  }else{
+  }
+  else
+  {
     release(&p->lock);
     return 1;
   }
@@ -493,14 +569,12 @@ int FCFS_scheduler(struct proc *p, struct cpu *c)
 void RR_scheduler(struct proc *p, struct cpu *c)
 {
   intr_on();
-  // int flag = 0;
   for (p = proc; p < &proc[NPROC]; p++)
   {
     acquire(&p->lock);
     if (p->state == RUNNABLE)
     {
       p->state = RUNNING;
-      // flag = 1;
       c->proc = p;
       swtch(&c->context, &p->context);
       c->proc = 0;
@@ -806,11 +880,11 @@ int changeScheduler(int type)
   if (type == 0)
   {
     st = FCFS;
-    printf("Switch to fcfs");
+    printf("Switch to fcfs\n");
   }
   else if (type == 1)
   {
-    printf("Switch to rr");
+    printf("Switch to rr\n");
     st = RR;
   }
   return 0;
@@ -828,16 +902,11 @@ int processInfo(uint64 uinfo, int pid)
     {
       printf("%d\n", p->running_time);
       flag = 1;
-      info.cpu_burst_time = ((double)p->running_time) / 10;
-      info.waiting_time = ((double)p->sleeping_time) / 10;
+      info.cpu_burst_time = (p->running_time);
+      info.waiting_time = (p->sleeping_time) / 10;
       if (p->termination_time == 0)
       {
         info.turn_around_time = ticks - p->ticks;
-      }
-
-      else if (p->termination_time - p->ticks < 0)
-      {
-        info.turn_around_time = 0;
       }
       else
       {
@@ -865,11 +934,11 @@ void processInfoUpdate()
     {
       p->ready_time++;
     }
-    else if (p->state == RUNNING)
+    if (p->state == RUNNING)
     {
       p->running_time++;
     }
-    else if (p->state == SLEEPING)
+    if (p->state == SLEEPING)
     {
       p->sleeping_time++;
     }

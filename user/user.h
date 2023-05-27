@@ -1,3 +1,5 @@
+#include "kernel/processInfo.h"
+
 struct stat;
 struct sysinfo;
 
@@ -12,7 +14,7 @@ int close(int);
 int kill(int);
 int exec(const char*, char**);
 int open(const char*, int);
-int mknod(const char*, short, short);
+int mknod(const char*, short, short);   
 int unlink(const char*);
 int fstat(int fd, struct stat*);
 int link(const char*, const char*);
@@ -27,6 +29,7 @@ int getProcTick(int);
 int sysinfo(struct sysinfo*);
 int changeScheduler(int);
 int processInfo(uint64, int);
+int customWait(int *, struct processInfo *);
 
 // ulib.c
 int stat(const char*, struct stat*);

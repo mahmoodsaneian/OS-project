@@ -124,3 +124,13 @@ uint64 sys_processInfo(void){
     int result = processInfo(info,pid);
     return result;
 }
+
+uint64
+sys_customWait(void)
+{
+  uint64 pid;
+  argaddr(0, &pid); 
+  uint64 processTime;
+  argaddr(1, &processTime); 
+  return customWait(pid,processTime);
+} 

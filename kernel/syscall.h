@@ -24,3 +24,4 @@
 #define SYS_sysinfo 23
 #define SYS_changeScheduler 24
 #define SYS_processInfo 25
+#define SYS_customWait 26

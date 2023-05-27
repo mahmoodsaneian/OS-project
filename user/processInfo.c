@@ -1,7 +1,7 @@
 #include "kernel/types.h"
 #include "kernel/stat.h"
 #include "user/user.h"
-#include "kernel/processInfo.h"
+
 
 struct processInfo info;
 int main(int argc){

@@ -113,6 +113,7 @@ int             sysinfo(struct sysinfo*);
 int             changeScheduler(int);
 int             processInfo(uint64, int);
 void            processInfoUpdate();
+int             customWait(uint64, uint64);
 // swtch.S
 void            swtch(struct context*, struct context*);
 

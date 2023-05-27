@@ -40,3 +40,4 @@ entry("getProcTick");
 entry("sysinfo");
 entry("changeScheduler");
 entry("processInfo");
+entry("customWait");
